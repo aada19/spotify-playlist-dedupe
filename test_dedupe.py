@@ -85,12 +85,21 @@ def install_stubs(all_items):
         sys.modules[name] = mod
 
 
-def run(all_items):
+def stub_input(confirm="y"):
+    """main() reads twice: the playlist link, then the removal confirmation."""
+    def responder(prompt=""):
+        if "Proceed" in prompt:
+            return confirm
+        return "https://open.spotify.com/playlist/PLID"
+    return responder
+
+
+def run(all_items, confirm="y"):
     captured.clear()
     install_stubs(all_items)
     os.environ.update(SPOTIFY_CLIENT_ID="a", SPOTIFY_CLIENT_SECRET="b",
                       SPOTIFY_REDIRECT_URI="http://127.0.0.1:8888/callback")
-    builtins.input = lambda *a: "https://open.spotify.com/playlist/PLID"
+    builtins.input = stub_input(confirm)
     sys.modules.pop("no_duplicates_spotify", None)
     mod = importlib.import_module("no_duplicates_spotify")
     mod.main()
@@ -174,7 +183,21 @@ items = [make_track(f"S{n}", ["X"], f"spotify:track:{n}") for n in range(101)]
 m = run(items)
 check("no false positives", m.duplicates, [])
 
-print("\n=== Test 8: non-200 from Spotify must raise, not pass silently ===")
+print("\n=== Test 8: declining the confirmation must delete nothing ===")
+items = [make_track("Song A", ["X"], "spotify:track:SINGLE"),
+         make_track("Song A", ["X"], "spotify:track:ALBUMCUT")]
+for answer in ("n", "", "no", "N", "anything else"):
+    m = run(items, confirm=answer)
+    check(f"answer {answer!r} sends no DELETE", "json" in captured, False)
+check("but the duplicate was still reported", len(m.duplicates), 1)
+
+print("\n=== Test 9: confirming proceeds ===")
+for answer in ("y", "Y", "yes", "YES"):
+    m = run(items, confirm=answer)
+    check(f"answer {answer!r} sends the DELETE",
+          sent(), [{"uri": "spotify:track:ALBUMCUT"}])
+
+print("\n=== Test 10: non-200 from Spotify must raise, not pass silently ===")
 items = [make_track("Song A", ["X"], "spotify:track:SINGLE"),
          make_track("Song A", ["X"], "spotify:track:ALBUMCUT")]
 captured.clear()
@@ -194,7 +217,7 @@ def failing_delete(url, headers=None, json=None):
 sys.modules["requests"].delete = failing_delete
 os.environ.update(SPOTIFY_CLIENT_ID="a", SPOTIFY_CLIENT_SECRET="b",
                   SPOTIFY_REDIRECT_URI="http://127.0.0.1:8888/callback")
-builtins.input = lambda *a: "https://open.spotify.com/playlist/PLID"
+builtins.input = stub_input("y")
 sys.modules.pop("no_duplicates_spotify", None)
 mod = importlib.import_module("no_duplicates_spotify")
 try:

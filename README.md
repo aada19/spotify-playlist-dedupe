@@ -10,6 +10,7 @@ Spotify's built-in duplicate detection matches on track ID. That catches the cas
 - Prints every track it considers a duplicate, with the album name and release date, so you can see what matched what.
 - Removes repeats that carry a *different* track ID from the copy being kept — the ones Spotify's own duplicate check does not flag.
 - Leaves same-track-ID repeats in place, reporting them instead. Spotify already warns about those at add time, so they were a deliberate choice.
+- Asks for confirmation before deleting anything, and aborts on any answer other than `y`.
 - Issues a single `DELETE` to the Web API for the tracks it does remove.
 
 ## How it works
@@ -45,8 +46,8 @@ Same-ID repeats are still detected and printed, with their playlist positions, s
 
 These are real and worth reading before pointing this at a playlist you care about.
 
-- **Title+artist collides on genuinely different recordings.** A studio version and a live version, an original and a re-recording (e.g. a "Taylor's Version"), an acoustic take, or a remaster released under an identical title and artist credit will be treated as the same track. The script does nothing to distinguish them — it collects the album name and release date for the printout, but does not use either in the matching decision. If a live album track happens to share an exact title with the studio cut, the live one gets removed.
-- **There is still no dry-run or confirmation step.** The script prints what it found before issuing the delete, but it does not wait for approval. Running it is a live modification.
+- **Title+artist collides on genuinely different recordings.** A studio version and a live version, an original and a re-recording (e.g. a "Taylor's Version"), an acoustic take, or a remaster released under an identical title and artist credit will be treated as the same track. The script does nothing to distinguish them — it collects the album name and release date for the printout, but does not use either in the matching decision. This is the reason for the confirmation prompt: the album name is shown for every proposed removal precisely so a live cut or remaster can be spotted before you approve.
+- **There is no dry-run mode.** The script prints everything it found and waits for confirmation before deleting, so no removal happens without an explicit `y`, but there is no way to inspect the result without also being offered the delete.
 - **The delete call is unbatched.** The Spotify API accepts at most 100 entries per removal request. The script sends every flagged track in one request, so a playlist with more than 100 distinct duplicated tracks will fail.
 - **Error handling is minimal.** The removal response status is checked and a non-200 raises rather than passing silently, but no request is wrapped in `try`/`except` and there is no retry or rate-limit handling. A network failure or an expired token surfaces as an unhandled traceback.
 - **The cached authorization eventually expires.** Access tokens are refreshed automatically, but Spotify refresh tokens now expire after about six months. When that happens the next run reopens the browser approval prompt. That is expected behavior, not a failure.
@@ -107,11 +108,26 @@ pip install -r requirements.txt
 python no_duplicates_spotify.py
 ```
 
-It prompts for a playlist link, then prints the duplicates it found:
+It prompts for a playlist link, prints everything it found, and asks before removing anything:
 
 ```
 Spotify Playlist Link:
-https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M
+https://open.spotify.com/playlist/<your-playlist-id>
 Duplicates found:
 ('Song Title', 'Artist Name', 'Album Name', '2019-04-05')
+
+Left in place - same track ID as the copy being kept. Spotify warns about
+these when you add them, so they were added on purpose:
+  position 7: Song Title - Artist Name [Album Name]
+
+About to remove 1 track(s) from the playlist.
+Proceed? [y/N]
+```
+
+Anything other than `y` or `yes` aborts without touching the playlist. Check the album names in that list before answering — a live version or remaster sharing a title with the studio cut will appear as a duplicate, and the album is what distinguishes them.
+
+Run the tests with:
+
+```bash
+python test_dedupe.py
 ```

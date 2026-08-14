@@ -135,6 +135,13 @@ def main():
         print("\nNothing to remove.")
         return
 
+    # Title+artist matching collides on live cuts, remasters and re-recordings
+    # that share a title. Removal is not reversible, so require a yes.
+    print(f"\nAbout to remove {len(objects)} track(s) from the playlist.")
+    if input("Proceed? [y/N] ").strip().lower() not in ("y", "yes"):
+        print("Aborted. Nothing was removed.")
+        return
+
     result = delete_duplicates(objects=objects)
     print(f"\nRemoved {len(objects)} track(s). "
           f"New snapshot: {result.get('snapshot_id')}")
